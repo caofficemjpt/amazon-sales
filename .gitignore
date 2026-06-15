@@ -1,3 +1,31 @@
+# Python
 __pycache__/
+*.pyc
+
+# Local Data / Inputs
 Amazone - April/
+
+# Excel Outputs
 *.xlsx
+
+# Node / Frontend Build & Dependencies
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# Local Environment Variables
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Editor & OS files
+.vscode/
+.idea/
+.DS_Store
+*.suo
+Thumbs.db
+.agents/
