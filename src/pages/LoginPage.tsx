@@ -109,11 +109,6 @@ export function LoginPage() {
           </button>
         </form>
 
-        <div className="login-hint-panel">
-          <p><strong>Available accounts (demo):</strong></p>
-          <p>Admin: <code>admin</code> / <code>admin123</code></p>
-          <p>Viewer: <code>viewer</code> / <code>viewer123</code></p>
-        </div>
       </div>
     </div>
   );
