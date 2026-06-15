@@ -18,7 +18,7 @@ import { TreemapChart } from '../components/charts/TreemapChart';
 import { DataTable } from '../components/ui/DataTable';
 import { PageLoader } from '../components/ui/Loader';
 import type { ConsolidatedRecord, SettlementFee } from '../types';
-import { formatINR, formatPct } from '../utils/format';
+import { formatINR, formatPct, formatDateTime } from '../utils/format';
 import {
   Building2,
   Scale,
@@ -44,6 +44,7 @@ export function FinancialsPage() {
   const feeBreakdown = useMemo(() => computeFeeBreakdown(fees), [fees]);
   const taxSummary = useMemo(() => computeTaxSummary(records), [records]);
   const promoKpi = useMemo(() => computePromoKpi(records), [records]);
+  const settlements = useMemo(() => computeSettlements(records), [records]);
   const feeAsRevenuePct = useMemo(() => {
     const totalRevenue = records.filter((r) => r.transaction_type === SHIPMENT).reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
     return feeBreakdown.map((f) => ({
@@ -178,6 +179,33 @@ export function FinancialsPage() {
           exportable
           exportFilename="fee_breakdown"
           pageSize={20}
+        />
+      </div>
+
+      {/* Settlements Table */}
+      <div className="card">
+        <h3 className="section-title">💼 Settlements Data</h3>
+        <DataTable
+          columns={[
+            { key: 'id' as keyof typeof settlements[0], header: 'Settlement Number/ID', sortable: true },
+            {
+              key: 'date' as keyof typeof settlements[0],
+              header: 'Settlement Date',
+              sortable: true,
+              render: (v) => formatDateTime(v as string),
+            },
+            {
+              key: 'amount' as keyof typeof settlements[0],
+              header: 'Settlement Amount',
+              sortable: true,
+              align: 'right',
+              render: (v) => formatINR(v as number),
+            },
+          ]}
+          data={settlements as unknown as Parameters<typeof DataTable>[0]['data']}
+          exportable
+          exportFilename="settlements"
+          pageSize={10}
         />
       </div>
 
@@ -365,4 +393,22 @@ function computePromoKpi(records: ConsolidatedRecord[]) {
   const totalRevenue = records.filter((r) => r.transaction_type === SHIPMENT).reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
   const promoRevenuePct = totalRevenue > 0 ? (Math.abs(totalPromos) / totalRevenue) * 100 : 0;
   return { totalPromos, promoRevenuePct };
+}
+
+function computeSettlements(records: ConsolidatedRecord[]) {
+  const bySettlement: Record<string, { id: string; date: string; amount: number }> = {};
+
+  for (const r of records) {
+    const sid = r.settlement_id ?? 'Unknown';
+    if (!bySettlement[sid]) {
+      bySettlement[sid] = {
+        id: sid,
+        date: r.deposit_date ?? 'N/A',
+        amount: 0,
+      };
+    }
+    bySettlement[sid].amount += r.total ?? 0;
+  }
+
+  return Object.values(bySettlement).sort((a, b) => b.date.localeCompare(a.date));
 }
