@@ -9,6 +9,7 @@ import { LineChart } from '../components/charts/LineChart';
 import { PageLoader } from '../components/ui/Loader';
 import type { ConsolidatedRecord } from '../types';
 import { formatINR, formatDateTime } from '../utils/format';
+import { getPreviousPeriod, getCompareDetails } from '../utils/compare';
 import {
   IndianRupee,
   ShoppingCart,
@@ -34,14 +35,27 @@ export function DashboardPage() {
   const { state } = usePeriodContext();
   const { records, loading } = useRecords(state.selectedPeriod?.id ?? null);
 
+  // Load previous period records for period-over-period comparison
+  const previousPeriod = useMemo(() => {
+    return getPreviousPeriod(state.selectedPeriod, state.periods);
+  }, [state.selectedPeriod, state.periods]);
+
+  const { records: prevRecords } = useRecords(previousPeriod?.id ?? null);
+
   const kpis = useMemo(() => computeKpis(records), [records]);
+  const prevKpis = useMemo(() => computeKpis(prevRecords), [prevRecords]);
+
   const paymentData = useMemo(() => computePaymentData(records), [records]);
   const fulfillmentData = useMemo(() => computeFulfillmentData(records), [records]);
   const transactionData = useMemo(() => computeTransactionData(records), [records]);
   const gstnData = useMemo(() => computeGstnData(records), [records]);
   const settlementTrend = useMemo(() => computeSettlementTrend(records), [records]);
   const dayOfWeekData = useMemo(() => computeDayOfWeekData(records), [records]);
+  
   const extraKpis = useMemo(() => computeExtraKpis(records), [records]);
+  const prevExtraKpis = useMemo(() => computeExtraKpis(prevRecords), [prevRecords]);
+
+  const typeData = useMemo(() => computeTypeData(records), [records]);
 
   if (!state.selectedPeriod) {
     return (
@@ -61,6 +75,9 @@ export function DashboardPage() {
     return <PageLoader />;
   }
 
+  const prevPeriodCount = previousPeriod ? 1 : 0;
+  const hasCompare = prevPeriodCount > 0 && prevRecords.length > 0;
+
   return (
     <div className="dashboard-page">
       {/* KPI Row */}
@@ -72,24 +89,28 @@ export function DashboardPage() {
             rawValue={kpis.totalRevenue}
             icon={<IndianRupee size={20} />}
             color="default"
+            {...(hasCompare ? getCompareDetails(kpis.totalRevenue, prevKpis.totalRevenue) : {})}
           />
           <KpiCard
             title="Total Orders"
             value={kpis.totalOrders.toLocaleString('en-IN')}
             rawValue={kpis.totalOrders}
             icon={<ShoppingCart size={20} />}
+            {...(hasCompare ? getCompareDetails(kpis.totalOrders, prevKpis.totalOrders) : {})}
           />
           <KpiCard
             title="Units Sold"
             value={kpis.unitsSold.toLocaleString('en-IN')}
             rawValue={kpis.unitsSold}
             icon={<Package size={20} />}
+            {...(hasCompare ? getCompareDetails(kpis.unitsSold, prevKpis.unitsSold) : {})}
           />
           <KpiCard
             title="Avg Order Value"
             value={formatINR(kpis.avgOrderValue)}
             rawValue={kpis.avgOrderValue}
             icon={<TrendingUp size={20} />}
+            {...(hasCompare ? getCompareDetails(kpis.avgOrderValue, prevKpis.avgOrderValue) : {})}
           />
           <KpiCard
             title="Net Received"
@@ -97,6 +118,7 @@ export function DashboardPage() {
             rawValue={Math.abs(kpis.netReceived)}
             icon={<Building2 size={20} />}
             color={kpis.netReceived >= 0 ? 'success' : 'danger'}
+            {...(hasCompare ? getCompareDetails(kpis.netReceived, prevKpis.netReceived) : {})}
           />
           <KpiCard
             title="Total Charges"
@@ -104,6 +126,7 @@ export function DashboardPage() {
             rawValue={Math.abs(kpis.totalCharges)}
             icon={<Receipt size={20} />}
             color="danger"
+            {...(hasCompare ? getCompareDetails(kpis.totalCharges, prevKpis.totalCharges) : {})}
           />
           <KpiCard
             title="Total Refunds"
@@ -111,6 +134,7 @@ export function DashboardPage() {
             rawValue={Math.abs(kpis.totalRefunds)}
             icon={<Undo2 size={20} />}
             color="warning"
+            {...(hasCompare ? getCompareDetails(kpis.totalRefunds, prevKpis.totalRefunds) : {})}
           />
           <KpiCard
             title="Refund Rate"
@@ -118,6 +142,7 @@ export function DashboardPage() {
             rawValue={kpis.refundRate}
             icon={<Percent size={20} />}
             color={kpis.refundRate > 15 ? 'danger' : kpis.refundRate > 5 ? 'warning' : 'success'}
+            {...(hasCompare ? getCompareDetails(kpis.refundRate, prevKpis.refundRate, true) : {})}
           />
         </div>
       </section>
@@ -130,6 +155,7 @@ export function DashboardPage() {
             value={formatINR(extraKpis.avgPricePerUnit)}
             rawValue={extraKpis.avgPricePerUnit}
             icon={<IndianRupee size={16} />}
+            {...(hasCompare ? getCompareDetails(extraKpis.avgPricePerUnit, prevExtraKpis.avgPricePerUnit) : {})}
           />
           <KpiCard
             title="Gross Margin Proxy"
@@ -137,6 +163,7 @@ export function DashboardPage() {
             rawValue={extraKpis.grossMargin}
             icon={<TrendingUp size={16} />}
             color={extraKpis.grossMargin > 70 ? 'success' : extraKpis.grossMargin > 40 ? 'warning' : 'danger'}
+            {...(hasCompare ? getCompareDetails(extraKpis.grossMargin, prevExtraKpis.grossMargin, true) : {})}
           />
           <KpiCard
             title="Top Revenue Day"
@@ -145,6 +172,11 @@ export function DashboardPage() {
               return formatted.includes(' ') ? formatted.split(' ')[0] : formatted;
             })() : 'N/A'}
             icon={<Calendar size={16} />}
+            subtitle={hasCompare && prevExtraKpis.topRevenueDay ? `vs last period: ${(() => {
+              const formatted = formatDateTime(prevExtraKpis.topRevenueDay);
+              return formatted.includes(' ') ? formatted.split(' ')[0] : formatted;
+            })()}` : 'vs last period: N/A'}
+            trend="neutral"
           />
         </div>
       </section>
@@ -167,6 +199,34 @@ export function DashboardPage() {
                   <p className="payment-stat-label">{stat.label}</p>
                   <p className="payment-stat-value">{stat.count.toLocaleString('en-IN')}</p>
                   <p className="payment-stat-pct">{stat.pct.toFixed(1)}%</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Row 2.5 — B2B vs B2C Customer Split */}
+      <section aria-label="B2B vs B2C Sales Split">
+        <div className="card">
+          <h3 className="section-title"><Building2 size={18} className="inline-icon" /> B2B vs B2C Sales Split</h3>
+          <div className="dashboard-payment-split">
+            <div className="dashboard-donut-wrapper">
+              <DonutChart
+                data={typeData.chartData}
+                formatter={formatINR}
+                height={280}
+              />
+            </div>
+            <div className="dashboard-payment-stats">
+              {typeData.stats.map((stat) => (
+                <div key={stat.label} className="payment-stat-box">
+                  <p className="payment-stat-label">{stat.label}</p>
+                  <p className="payment-stat-value">{formatINR(stat.revenue)}</p>
+                  <p className="payment-stat-pct">{stat.revenuePct.toFixed(1)}% of Revenue</p>
+                  <p className="text-muted text-sm" style={{ marginTop: 'var(--space-1)' }}>
+                    {stat.orders.toLocaleString('en-IN')} orders ({stat.orderPct.toFixed(1)}%)
+                  </p>
                 </div>
               ))}
             </div>
@@ -270,7 +330,7 @@ export function DashboardPage() {
               <tbody>
                 {gstnData.rows.map((row) => (
                   <tr key={row.gstn}>
-                    <td className="gstn-col">{row.gstn || '—'}</td>
+                    <td className="gstn-col">{row.gstn || 'Unattributed / Account Level'}</td>
                     <td className="text-right">{formatINR(row.taxable)}</td>
                     <td className="text-right">{formatINR(row.gst)}</td>
                     <td className="text-right">{formatINR(row.total)}</td>
@@ -518,4 +578,52 @@ function computeDayOfWeekData(records: ConsolidatedRecord[]) {
   }
 
   return DAY_NAMES.map((name, i) => ({ name, orders: counts[i] }));
+}
+
+function computeTypeData(records: ConsolidatedRecord[]) {
+  const counts = { B2C: 0, B2B: 0 };
+  const revenue = { B2C: 0, B2B: 0 };
+  const seenOrders = new Set<string>();
+
+  for (const r of records) {
+    const isB2B = r.type === 'B2B';
+    const key = isB2B ? 'B2B' : 'B2C';
+
+    // Add to revenue and order count
+    if (r.transaction_type === SHIPMENT) {
+      revenue[key] += r.invoice_amount ?? 0;
+      const orderId = r.order_id ?? r.invoice_no ?? '';
+      if (!seenOrders.has(orderId)) {
+        seenOrders.add(orderId);
+        counts[key]++;
+      }
+    }
+  }
+
+  const totalOrders = counts.B2C + counts.B2B;
+  const totalRevenue = revenue.B2C + revenue.B2B;
+
+  const chartData = [
+    { name: 'B2C Sales', value: revenue.B2C },
+    { name: 'B2B Sales', value: revenue.B2B },
+  ].filter((d) => d.value > 0);
+
+  const stats = [
+    {
+      label: 'B2C Sales',
+      orders: counts.B2C,
+      orderPct: totalOrders > 0 ? (counts.B2C / totalOrders) * 100 : 0,
+      revenue: revenue.B2C,
+      revenuePct: totalRevenue > 0 ? (revenue.B2C / totalRevenue) * 100 : 0,
+    },
+    {
+      label: 'B2B Sales',
+      orders: counts.B2B,
+      orderPct: totalOrders > 0 ? (counts.B2B / totalOrders) * 100 : 0,
+      revenue: revenue.B2B,
+      revenuePct: totalRevenue > 0 ? (revenue.B2B / totalRevenue) * 100 : 0,
+    },
+  ];
+
+  return { chartData, stats };
 }

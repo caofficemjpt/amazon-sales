@@ -13,14 +13,31 @@ const MONTH_ORDER = [
 ];
 
 export function PeriodSelector({ periods, selected, onChange }: PeriodSelectorProps) {
+  // Generate YTD periods for each unique year present in the uploads
+  const years = Array.from(new Set(periods.map((p) => p.year))).sort((a, b) => b - a);
+  const ytdPeriods = years.map((yr) => ({
+    id: `YTD_${yr}`,
+    month: 'YTD',
+    year: yr,
+    uploaded_at: '',
+    row_count: periods
+      .filter((p) => p.year === yr)
+      .reduce((sum, p) => sum + (p.row_count ?? 0), 0),
+  }));
+
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value;
     if (!val) {
       onChange(null);
       return;
     }
-    const found = periods.find((p) => p.id === val);
-    onChange(found ?? null);
+    if (val.startsWith('YTD_')) {
+      const found = ytdPeriods.find((p) => p.id === val);
+      onChange(found ?? null);
+    } else {
+      const found = periods.find((p) => p.id === val);
+      onChange(found ?? null);
+    }
   }
 
   // Sort and deduplicate periods by year desc, month desc, prioritizing those with row counts
@@ -50,12 +67,25 @@ export function PeriodSelector({ periods, selected, onChange }: PeriodSelectorPr
         aria-label="Select reporting period"
       >
         <option value="">Select period...</option>
-        {sorted.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.month} {p.year}
-            {p.row_count !== null ? ` (${p.row_count.toLocaleString()} rows)` : ''}
-          </option>
-        ))}
+        {ytdPeriods.length > 0 && (
+          <optgroup label="Year-to-Date (YTD)">
+            {ytdPeriods.map((p) => (
+              <option key={p.id} value={p.id}>
+                YTD {p.year} ({p.row_count.toLocaleString()} rows)
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {sorted.length > 0 && (
+          <optgroup label="Monthly Periods">
+            {sorted.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.month} {p.year}
+                {p.row_count !== null ? ` (${p.row_count.toLocaleString()} rows)` : ''}
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
     </div>
   );

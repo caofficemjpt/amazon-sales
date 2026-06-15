@@ -70,9 +70,21 @@ export function PeriodProvider({ children }: PeriodProviderProps) {
     if (state.periods.length === 0) return;
     const savedId = localStorage.getItem(STORAGE_KEY);
     if (savedId && !state.selectedPeriod) {
-      const found = state.periods.find((p) => p.id === savedId);
-      if (found) {
-        dispatch({ type: 'SET_PERIOD', payload: found });
+      if (savedId.startsWith('YTD_')) {
+        const year = parseInt(savedId.split('_')[1], 10);
+        const ytdPeriod: Period = {
+          id: savedId,
+          month: 'YTD',
+          year,
+          uploaded_at: new Date().toISOString(),
+          row_count: null,
+        };
+        dispatch({ type: 'SET_PERIOD', payload: ytdPeriod });
+      } else {
+        const found = state.periods.find((p) => p.id === savedId);
+        if (found) {
+          dispatch({ type: 'SET_PERIOD', payload: found });
+        }
       }
     }
   }, [state.periods, state.selectedPeriod]);

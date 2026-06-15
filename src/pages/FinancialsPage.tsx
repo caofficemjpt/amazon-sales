@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, Fragment } from 'react';
 import {
   BarChart as RechartsBarChart,
   Bar,
@@ -19,6 +19,7 @@ import { DataTable } from '../components/ui/DataTable';
 import { PageLoader } from '../components/ui/Loader';
 import type { ConsolidatedRecord, SettlementFee } from '../types';
 import { formatINR, formatPct, formatDateTime } from '../utils/format';
+import { getPreviousPeriod, getCompareDetails } from '../utils/compare';
 import {
   Building2,
   Scale,
@@ -27,6 +28,8 @@ import {
   Tag,
   Percent,
   Coins,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import './FinancialsPage.css';
 
@@ -38,12 +41,45 @@ export function FinancialsPage() {
   const { records, loading: recLoading } = useRecords(state.selectedPeriod?.id ?? null);
   const { fees, loading: feeLoading } = useFees(state.selectedPeriod?.id ?? null);
 
+  // Load previous period records for period-over-period comparison
+  const previousPeriod = useMemo(() => {
+    return getPreviousPeriod(state.selectedPeriod, state.periods);
+  }, [state.selectedPeriod, state.periods]);
+
+  const { records: prevRecords } = useRecords(previousPeriod?.id ?? null);
+
+  const [expandedFeeTypes, setExpandedFeeTypes] = useState<Record<string, boolean>>({});
+
   const loading = recLoading || feeLoading;
 
+  const orderGstnMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of records) {
+      if (r.order_id && r.seller_gstn) {
+        map.set(r.order_id, r.seller_gstn);
+      }
+    }
+    return map;
+  }, [records]);
+
+  const toggleFeeType = (feeType: string) => {
+    setExpandedFeeTypes((prev) => ({
+      ...prev,
+      [feeType]: !prev[feeType],
+    }));
+  };
+
   const waterfall = useMemo(() => computeWaterfall(records), [records]);
-  const feeBreakdown = useMemo(() => computeFeeBreakdown(fees), [fees]);
+  const prevWaterfall = useMemo(() => computeWaterfall(prevRecords), [prevRecords]);
+
+  const feeBreakdown = useMemo(() => computeFeeBreakdown(fees, orderGstnMap), [fees, orderGstnMap]);
+  
   const taxSummary = useMemo(() => computeTaxSummary(records), [records]);
+  const prevTaxSummary = useMemo(() => computeTaxSummary(prevRecords), [prevRecords]);
+
   const promoKpi = useMemo(() => computePromoKpi(records), [records]);
+  const prevPromoKpi = useMemo(() => computePromoKpi(prevRecords), [prevRecords]);
+
   const settlements = useMemo(() => computeSettlements(records), [records]);
   const feeAsRevenuePct = useMemo(() => {
     const totalRevenue = records.filter((r) => r.transaction_type === SHIPMENT).reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
@@ -67,6 +103,8 @@ export function FinancialsPage() {
 
   if (loading) return <PageLoader />;
 
+  const hasCompare = previousPeriod !== null && prevRecords.length > 0;
+
   return (
     <div className="financials-page">
       {/* KPI Row */}
@@ -76,6 +114,7 @@ export function FinancialsPage() {
           value={formatINR(waterfall.grossRevenue)}
           rawValue={waterfall.grossRevenue}
           icon={<Coins size={20} />}
+          {...(hasCompare ? getCompareDetails(waterfall.grossRevenue, prevWaterfall.grossRevenue) : {})}
         />
         <KpiCard
           title="Net Received"
@@ -83,6 +122,7 @@ export function FinancialsPage() {
           rawValue={Math.abs(waterfall.netReceived)}
           icon={<Building2 size={20} />}
           color={waterfall.netReceived >= 0 ? 'success' : 'danger'}
+          {...(hasCompare ? getCompareDetails(waterfall.netReceived, prevWaterfall.netReceived) : {})}
         />
         <KpiCard
           title="Total TCS-IGST"
@@ -90,6 +130,7 @@ export function FinancialsPage() {
           rawValue={Math.abs(waterfall.totalTcs)}
           icon={<Scale size={20} />}
           color="warning"
+          {...(hasCompare ? getCompareDetails(waterfall.totalTcs, prevWaterfall.totalTcs) : {})}
         />
         <KpiCard
           title="Total TDS"
@@ -97,6 +138,7 @@ export function FinancialsPage() {
           rawValue={Math.abs(waterfall.totalTds)}
           icon={<Receipt size={20} />}
           color="warning"
+          {...(hasCompare ? getCompareDetails(waterfall.totalTds, prevWaterfall.totalTds) : {})}
         />
       </div>
 
@@ -108,6 +150,7 @@ export function FinancialsPage() {
           rawValue={Math.abs(promoKpi.totalPromos)}
           icon={<Gift size={20} />}
           color="warning"
+          {...(hasCompare ? getCompareDetails(promoKpi.totalPromos, prevPromoKpi.totalPromos) : {})}
         />
         <KpiCard
           title="Promo % of Revenue"
@@ -115,18 +158,21 @@ export function FinancialsPage() {
           rawValue={Math.abs(promoKpi.promoRevenuePct)}
           icon={<Tag size={20} />}
           color="warning"
+          {...(hasCompare ? getCompareDetails(promoKpi.promoRevenuePct, prevPromoKpi.promoRevenuePct, true) : {})}
         />
         <KpiCard
           title="Effective Tax Rate"
           value={formatPct(taxSummary.effectiveTaxRate)}
           rawValue={taxSummary.effectiveTaxRate}
           icon={<Percent size={20} />}
+          {...(hasCompare ? getCompareDetails(taxSummary.effectiveTaxRate, prevTaxSummary.effectiveTaxRate, true) : {})}
         />
         <KpiCard
           title="Total Tax Collected"
           value={formatINR(taxSummary.totalTaxCollected)}
           rawValue={taxSummary.totalTaxCollected}
           icon={<Scale size={20} />}
+          {...(hasCompare ? getCompareDetails(taxSummary.totalTaxCollected, prevTaxSummary.totalTaxCollected) : {})}
         />
       </div>
 
@@ -147,39 +193,81 @@ export function FinancialsPage() {
         />
       </div>
 
-      {/* Fee breakdown table with breakeven analysis */}
+      {/* Fee breakdown table with collapsible GSTN-wise breakdown */}
       <div className="card">
         <h3 className="section-title">📋 Fee Breakdown Table</h3>
-        <DataTable
-          columns={[
-            { key: 'feeType' as keyof (typeof feeAsRevenuePct)[0], header: 'Fee Type', sortable: true },
-            {
-              key: 'totalAmount' as keyof (typeof feeAsRevenuePct)[0],
-              header: 'Total Amount',
-              sortable: true,
-              align: 'right',
-              render: (v) => formatINR(v as number),
-            },
-            {
-              key: 'count' as keyof (typeof feeAsRevenuePct)[0],
-              header: 'Occurrences',
-              sortable: true,
-              align: 'right',
-              render: (v) => (v as number).toLocaleString('en-IN'),
-            },
-            {
-              key: 'pct' as keyof (typeof feeAsRevenuePct)[0],
-              header: '% of Revenue',
-              sortable: true,
-              align: 'right',
-              render: (v) => formatPct(v as number, 2),
-            },
-          ]}
-          data={feeAsRevenuePct as unknown as Parameters<typeof DataTable>[0]['data']}
-          exportable
-          exportFilename="fee_breakdown"
-          pageSize={20}
-        />
+        <p className="financials-subtitle" style={{ marginBottom: 'var(--space-4)' }}>
+          Click on any fee type row to view the GSTN-wise breakdown.
+        </p>
+        <div className="fee-table-container">
+          <table className="fee-collapsible-table">
+            <thead>
+              <tr>
+                <th style={{ width: '50px' }}></th>
+                <th>Fee Type</th>
+                <th className="text-right">Total Amount</th>
+                <th className="text-right">Occurrences</th>
+                <th className="text-right">% of Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {feeAsRevenuePct.map((row) => {
+                const isExpanded = !!expandedFeeTypes[row.feeType];
+                return (
+                  <Fragment key={row.feeType}>
+                    <tr
+                      className={`fee-row-main ${isExpanded ? 'fee-row-main--expanded' : ''}`}
+                      onClick={() => toggleFeeType(row.feeType)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <td className="text-center" style={{ color: 'var(--color-text-muted)', verticalAlign: 'middle' }}>
+                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </td>
+                      <td className="font-semibold" style={{ color: 'var(--color-text)' }}>{row.feeType}</td>
+                      <td className="text-right font-mono font-semibold text-danger">
+                        {formatINR(row.totalAmount)}
+                      </td>
+                      <td className="text-right">{row.count.toLocaleString('en-IN')}</td>
+                      <td className="text-right">{formatPct(row.pct, 2)}</td>
+                    </tr>
+                    {isExpanded && (
+                      <tr className="fee-row-details">
+                        <td></td>
+                        <td colSpan={4} style={{ padding: '0 0 var(--space-4) 0' }}>
+                          <div className="fee-state-breakdown-wrapper">
+                            <table className="fee-state-table">
+                              <thead>
+                                <tr>
+                                  <th>Seller GSTN</th>
+                                  <th className="text-right">Amount</th>
+                                  <th className="text-right">Occurrences</th>
+                                  <th className="text-right">% of this Fee</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {row.gstns.map((g) => {
+                                  const gstnPct = Math.abs(row.totalAmount) > 0 ? (Math.abs(g.amount) / Math.abs(row.totalAmount)) * 100 : 0;
+                                  return (
+                                    <tr key={g.gstn}>
+                                      <td className="font-semibold font-mono" style={{ color: 'var(--color-text)' }}>{g.gstn}</td>
+                                      <td className="text-right text-danger font-mono font-semibold">{formatINR(g.amount)}</td>
+                                      <td className="text-right">{g.count.toLocaleString('en-IN')}</td>
+                                      <td className="text-right">{formatPct(gstnPct, 1)}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Settlements Table */}
@@ -362,25 +450,62 @@ function computeWaterfall(records: ConsolidatedRecord[]): WaterfallData {
   return { grossRevenue, totalRefunds, totalCharges, totalTcs, totalTds, totalPromos, netReceived, chartData };
 }
 
+interface GstnBreakdown {
+  gstn: string;
+  amount: number;
+  count: number;
+}
+
 interface FeeRow {
   feeType: string;
   totalAmount: number;
   count: number;
+  gstns: GstnBreakdown[];
 }
 
-function computeFeeBreakdown(fees: SettlementFee[]): FeeRow[] {
-  const byType = new Map<string, { total: number; count: number }>();
+function computeFeeBreakdown(fees: SettlementFee[], orderGstnMap: Map<string, string>): FeeRow[] {
+  const byType = new Map<string, { total: number; count: number; gstns: Map<string, { amount: number; count: number }> }>();
 
   for (const fee of fees) {
-    const existing = byType.get(fee.fee_type) ?? { total: 0, count: 0 };
-    byType.set(fee.fee_type, {
-      total: existing.total + (fee.fee_amount ?? 0),
-      count: existing.count + 1,
-    });
+    const feeType = fee.fee_type;
+    const amount = fee.fee_amount ?? 0;
+    const orderId = fee.order_id;
+    const gstn = orderId ? (orderGstnMap.get(orderId) ?? 'Unattributed / Account Level') : 'Unattributed / Account Level';
+
+    if (!byType.has(feeType)) {
+      byType.set(feeType, { total: 0, count: 0, gstns: new Map() });
+    }
+
+    const typeData = byType.get(feeType)!;
+    typeData.total += amount;
+    typeData.count += 1;
+
+    const gstnKey = gstn;
+    if (!typeData.gstns.has(gstnKey)) {
+      typeData.gstns.set(gstnKey, { amount: 0, count: 0 });
+    }
+    const gstnData = typeData.gstns.get(gstnKey)!;
+    gstnData.amount += amount;
+    gstnData.count += 1;
   }
 
   return [...byType.entries()]
-    .map(([feeType, { total, count }]) => ({ feeType, totalAmount: total, count }))
+    .map(([feeType, { total, count, gstns }]) => {
+      const gstnBreakdownList: GstnBreakdown[] = [...gstns.entries()]
+        .map(([gstn, gData]) => ({
+          gstn,
+          amount: gData.amount,
+          count: gData.count,
+        }))
+        .sort((a, b) => a.amount - b.amount); // Most negative expenses first
+
+      return {
+        feeType,
+        totalAmount: total,
+        count,
+        gstns: gstnBreakdownList,
+      };
+    })
     .sort((a, b) => a.totalAmount - b.totalAmount);
 }
 

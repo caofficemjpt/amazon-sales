@@ -40,11 +40,33 @@ export function useRecords(periodId: string | null): UseRecordsResult {
     const allRows: ConsolidatedRecord[] = [];
 
     try {
+      let periodIds: string[] = [id];
+
+      // Handle YTD virtual period
+      if (id.startsWith('YTD_')) {
+        const year = parseInt(id.split('_')[1], 10);
+        const { data: matchingPeriods, error: periodsError } = await supabase
+          .from('periods')
+          .select('id')
+          .eq('year', year);
+
+        if (periodsError) throw new Error(periodsError.message);
+        periodIds = (matchingPeriods ?? []).map((p) => p.id);
+        
+        if (periodIds.length === 0) {
+          if (!abortRef.current) {
+            setRecords([]);
+            setLoading(false);
+          }
+          return;
+        }
+      }
+
       // Get count first
       const { count, error: countError } = await supabase
         .from('consolidated_records')
         .select('*', { count: 'exact', head: true })
-        .eq('period_id', id);
+        .in('period_id', periodIds);
 
       if (countError) throw new Error(countError.message);
 
@@ -56,7 +78,7 @@ export function useRecords(periodId: string | null): UseRecordsResult {
           return supabase
             .from('consolidated_records')
             .select('*')
-            .eq('period_id', id)
+            .in('period_id', periodIds)
             .range(fromOffset, fromOffset + PAGE_SIZE - 1);
         });
 

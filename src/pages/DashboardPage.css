@@ -96,7 +96,7 @@
 }
 
 .text-right {
-  text-align: right;
+  text-align: right !important;
 }
 
 /* GSTN Table */

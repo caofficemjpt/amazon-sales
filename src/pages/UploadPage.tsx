@@ -8,6 +8,8 @@ import { buildFeeRecords, uploadToSupabase } from '../lib/processing/upload';
 import { supabase } from '../lib/supabase';
 import { usePeriodContext } from '../context/PeriodContext';
 import { ProgressBar } from '../components/ui/ProgressBar';
+import { invalidateRecordsCache } from '../hooks/useRecords';
+import { invalidateFeesCache } from '../hooks/useFees';
 import type { LogEntry, Period } from '../types';
 import {
   Calendar,
@@ -39,7 +41,7 @@ export function UploadPage() {
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedYear, setSelectedYear] = useState(String(CURRENT_YEAR));
   const [settlementFiles, setSettlementFiles] = useState<FileList | null>(null);
-  const [mtrFile, setMtrFile] = useState<File | null>(null);
+  const [mtrFiles, setMtrFiles] = useState<File[]>([]);
 
   // Processing state
   const [processing, setProcessing] = useState(false);
@@ -80,7 +82,7 @@ export function UploadPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!selectedMonth || !selectedYear || !settlementFiles || !mtrFile) {
+    if (!selectedMonth || !selectedYear || !settlementFiles || mtrFiles.length === 0) {
       addLog('❌ Please fill in all fields before processing.', 'error');
       return;
     }
@@ -122,11 +124,23 @@ export function UploadPage() {
       const summaryMap = aggregateSettlement(settlementRows, depositDateMap);
       addLog(`  Aggregated ${summaryMap.size} unique orders from settlement`, 'info');
 
-      // Step 4 — Parse MTR CSV
-      addLog('Loading MTR CSV...', 'info');
+      // Step 4 — Parse MTR files
+      addLog(`Loading ${mtrFiles.length} MTR file(s)...`, 'info');
       setProgress(35);
-      const mtrRows = await parseMTRFile(mtrFile);
-      addLog(`  Loaded ${mtrRows.length} MTR rows`, 'info');
+      let mtrRows: any[] = [];
+      for (const file of mtrFiles) {
+        addLog(`  Parsing ${file.name}...`, 'info');
+        const isB2B = file.name.toUpperCase().includes('B2B');
+        const fileType = isB2B ? 'B2B' : 'B2C';
+        const fileRows = await parseMTRFile(file);
+        const taggedRows = fileRows.map((r) => ({
+          ...r,
+          type: fileType,
+        }));
+        addLog(`    Loaded ${fileRows.length} rows (${fileType}) from ${file.name}`, 'info');
+        mtrRows = mtrRows.concat(taggedRows);
+      }
+      addLog(`  Combined MTR records: ${mtrRows.length} rows`, 'info');
 
       // Step 5 — Join datasets
       addLog('Joining datasets...', 'info');
@@ -150,20 +164,33 @@ export function UploadPage() {
       addLog('Uploading to database...', 'info');
       setProgress(60);
 
-      const periodId = await uploadToSupabase(
+      const uploadResult = await uploadToSupabase(
         selectedMonth,
         year,
         enriched,
         feeRecords,
+        summaryMap,
         (_step, pct, log) => {
           setProgress(60 + Math.round(pct * 0.4));
           if (log) addLog(log, 'info');
         }
       );
 
+      const { periodId, invoicesReconciled, settlementsReconciled, placeholdersCreated } = uploadResult;
+
       addLog(`✅ Done! ${enriched.length} rows uploaded.`, 'success');
+      addLog(`📊 Cross-Period Reconciliation Report:`, 'info');
+      addLog(`   • Reconciled: Matched and updated ${invoicesReconciled} older database invoices with newly uploaded settlements.`, 'success');
+      addLog(`   • Reconciled: Resolved and matched ${settlementsReconciled} new invoices with previously pending database settlements.`, 'success');
+      if (placeholdersCreated > 0) {
+        addLog(`   • Reconciled: Created ${placeholdersCreated} temporary placeholders for settlements without invoices (will heal automatically on MTR upload).`, 'warning');
+      }
       setProgress(100);
       setUploadDone(true);
+
+      // Invalidate frontend data caches to force fresh load
+      invalidateRecordsCache(periodId);
+      invalidateFeesCache(periodId);
 
       // Update context
       const { data: newPeriod } = await supabase
@@ -200,11 +227,18 @@ export function UploadPage() {
     e.preventDefault();
     setMtrDragging(false);
     const files = e.dataTransfer.files;
-    const csvFile = Array.from(files).find((f) => f.name.endsWith('.csv'));
-    if (csvFile) setMtrFile(csvFile);
+    const validFiles = Array.from(files).filter(
+      (f) => f.name.endsWith('.csv') || f.name.endsWith('.xlsx') || f.name.endsWith('.xls')
+    );
+    if (validFiles.length) {
+      setMtrFiles((prev) => {
+        const filtered = prev.filter((pf) => !validFiles.some((nf) => nf.name === pf.name));
+        return [...filtered, ...validFiles];
+      });
+    }
   }, []);
 
-  const canProcess = selectedMonth && selectedYear && settlementFiles && mtrFile
+  const canProcess = selectedMonth && selectedYear && settlementFiles && mtrFiles.length > 0
     && (!existingPeriod || conflictConfirmed);
 
   return (
@@ -352,9 +386,9 @@ export function UploadPage() {
 
             {/* MTR File */}
             <div className="upload-field-group">
-              <label className="label">MTR CSV File (.csv)</label>
+              <label className="label">MTR Files (.csv, .xlsx, .xls)</label>
               <div
-                className={`upload-dropzone ${mtrDragging ? 'upload-dropzone--dragging' : ''} ${mtrFile ? 'upload-dropzone--filled' : ''}`}
+                className={`upload-dropzone ${mtrDragging ? 'upload-dropzone--dragging' : ''} ${mtrFiles.length > 0 ? 'upload-dropzone--filled' : ''}`}
                 onDragEnter={() => setMtrDragging(true)}
                 onDragLeave={() => setMtrDragging(false)}
                 onDragOver={(e) => e.preventDefault()}
@@ -362,27 +396,53 @@ export function UploadPage() {
                 onClick={() => mtrInputRef.current?.click()}
                 role="button"
                 tabIndex={0}
-                aria-label="Click or drag to upload MTR CSV file"
+                aria-label="Click or drag to upload MTR CSV or Excel files"
                 onKeyDown={(e) => e.key === 'Enter' && mtrInputRef.current?.click()}
               >
                 <input
                   ref={mtrInputRef}
                   type="file"
-                  accept=".csv"
-                  onChange={(e) => setMtrFile(e.target.files?.[0] ?? null)}
+                  accept=".csv,.xlsx,.xls"
+                  multiple
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files) {
+                      const newFiles = Array.from(files);
+                      setMtrFiles((prev) => {
+                        const filtered = prev.filter((pf) => !newFiles.some((nf) => nf.name === pf.name));
+                        return [...filtered, ...newFiles];
+                      });
+                    }
+                  }}
                   style={{ display: 'none' }}
                   id="mtr-file-input"
                 />
-                {mtrFile ? (
+                {mtrFiles.length > 0 ? (
                   <div className="upload-dropzone-filled">
                     <span className="upload-dropzone-icon" style={{ display: 'inline-flex', alignItems: 'center' }}>
                       <FileSpreadsheet size={24} style={{ color: 'var(--color-primary-light)' }} />
                     </span>
-                    <div>
-                      <p className="upload-dropzone-filename">{mtrFile.name}</p>
-                      <p className="upload-dropzone-hint">
-                        {(mtrFile.size / 1024).toFixed(1)} KB
+                    <div style={{ width: '100%' }}>
+                      <p className="upload-dropzone-filename">
+                        {mtrFiles.length} file(s) selected
                       </p>
+                      <div className="upload-file-badges">
+                        {mtrFiles.map((f, i) => (
+                          <span key={i} className="upload-file-badge">{f.name}</span>
+                        ))}
+                      </div>
+                      <div style={{ marginTop: 'var(--space-2)' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMtrFiles([]);
+                          }}
+                        >
+                          Clear files
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (
@@ -391,9 +451,9 @@ export function UploadPage() {
                       <Upload size={24} style={{ color: 'var(--color-text-muted)' }} />
                     </span>
                     <p className="upload-dropzone-text">
-                      Drag & drop <strong>.csv</strong> file here, or click to browse
+                      Drag & drop <strong>.csv</strong> or <strong>.xlsx</strong> files here, or click to browse
                     </p>
-                    <p className="upload-dropzone-hint">Single file</p>
+                    <p className="upload-dropzone-hint">Multiple files supported (e.g. B2C and B2B)</p>
                   </div>
                 )}
               </div>

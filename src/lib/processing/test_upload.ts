@@ -166,7 +166,8 @@ async function runLocalUploadTest() {
     2026,
     enriched,
     feeRecords,
-    (step, percent, log) => {
+    summaryMap,
+    (step: string, percent: number, log?: string) => {
       if (log) console.log(`  [Progress ${percent}%] ${step} -> ${log}`);
     }
   );

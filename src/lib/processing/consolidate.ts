@@ -172,6 +172,7 @@ export function consolidate(
         deposit_date: settlement?.depositDate ?? null,
         payment_type: null, // enriched later
         fulfillment_channel: null, // enriched later
+        type: (mtrRow.type as string) || 'B2C',
       });
     }
   }

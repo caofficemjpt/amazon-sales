@@ -97,11 +97,14 @@
 .data-table-th--right { text-align: right; }
 .data-table-th--center { text-align: center; }
 
+.data-table-th--left .data-table-th-content { justify-content: flex-start; }
+.data-table-th--right .data-table-th-content { justify-content: flex-end; }
+.data-table-th--center .data-table-th-content { justify-content: center; }
+
 .data-table-th-content {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  justify-content: inherit;
 }
 
 .data-table-sort-icon {

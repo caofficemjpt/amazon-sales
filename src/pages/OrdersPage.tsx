@@ -16,6 +16,7 @@ export function OrdersPage() {
   // Filters
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedGstns, setSelectedGstns] = useState<string[]>([]);
+  const [selectedCustomerTypes, setSelectedCustomerTypes] = useState<string[]>([]);
 
   // Unique lists for filter options
   const transactionTypes = useMemo(() => {
@@ -43,9 +44,15 @@ export function OrdersPage() {
       if (selectedGstns.length > 0 && (!r.seller_gstn || !selectedGstns.includes(r.seller_gstn))) {
         return false;
       }
+      if (selectedCustomerTypes.length > 0) {
+        const rowType = r.type || 'B2C';
+        if (!selectedCustomerTypes.includes(rowType)) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [records, selectedTypes, selectedGstns]);
+  }, [records, selectedTypes, selectedGstns, selectedCustomerTypes]);
 
   // Row color styling classes based on transaction types
   const getRowClassName = (row: ConsolidatedRecord) => {
@@ -95,7 +102,7 @@ export function OrdersPage() {
         key: 'transaction_type',
         header: 'Type & Payment',
         sortable: true,
-        width: '150px',
+        width: '180px',
         render: (_, row) => {
           const type = row.transaction_type;
           let variant: 'success' | 'danger' | 'warning' | 'default' = 'default';
@@ -104,7 +111,10 @@ export function OrdersPage() {
           if (type === 'FreeReplacement') variant = 'warning';
           return (
             <div className="orders-cell-vertical">
-              <Badge label={type || 'Unknown'} variant={variant} />
+              <div style={{ display: 'flex', gap: 'var(--space-1)', alignItems: 'center' }}>
+                <Badge label={type || 'Unknown'} variant={variant} />
+                <Badge label={row.type || 'B2C'} variant={row.type === 'B2B' ? 'warning' : 'default'} />
+              </div>
               <div className="text-muted text-sm" style={{ marginTop: 'var(--space-2)' }}>
                 <strong>Pay:</strong> {row.payment_type || 'N/A'}
               </div>
@@ -172,10 +182,17 @@ export function OrdersPage() {
     );
   };
 
+  const toggleCustomerTypeFilter = (type: string) => {
+    setSelectedCustomerTypes((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+    );
+  };
+
   const handleCustomExport = (rawData: any[]) => {
     const data = rawData as ConsolidatedRecord[];
     // Sheet 1: Consolidated raw rows
     const consolidatedRows = data.map((r) => ({
+      'Type': r.type || 'B2C',
       'Seller GSTN': r.seller_gstn || '',
       'Invoice No': r.invoice_no || '',
       'Invoice Date': formatDateTime(r.invoice_date),
@@ -337,6 +354,25 @@ export function OrdersPage() {
                     onClick={() => toggleGstnFilter(gstn)}
                   >
                     {gstn || 'None'}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <p style={{ fontWeight: 600, marginBottom: 'var(--space-2)' }}>Customer Type</p>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              {['B2C', 'B2B'].map((type) => {
+                const active = selectedCustomerTypes.includes(type);
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    className={`btn ${active ? 'btn-primary' : 'btn-secondary'} btn-sm`}
+                    onClick={() => toggleCustomerTypeFilter(type)}
+                  >
+                    {type}
                   </button>
                 );
               })}

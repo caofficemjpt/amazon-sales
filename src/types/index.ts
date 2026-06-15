@@ -34,6 +34,7 @@ export interface ConsolidatedRecord {
   deposit_date: string | null;
   payment_type: string | null;
   fulfillment_channel: string | null;
+  type: string | null;
 }
 
 export interface SettlementFee {
@@ -146,6 +147,7 @@ export interface ConsolidatedRowInput {
   deposit_date: string | null;
   payment_type: string | null;
   fulfillment_channel: string | null;
+  type: string | null;
 }
 
 /** Settlement fee row for DB insert */
