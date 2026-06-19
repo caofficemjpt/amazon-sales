@@ -1,11 +1,52 @@
 .period-selector {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
 }
 
-.period-selector-input {
-  min-width: 200px;
+.period-shortcuts {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.shortcut-btn {
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
   font-size: var(--text-sm);
   font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.shortcut-btn:hover {
+  background: var(--color-bg-tertiary);
   color: var(--color-text-primary);
-  padding: var(--space-2) var(--space-8) var(--space-2) var(--space-3);
+}
+
+.shortcut-btn.active {
+  background: var(--color-primary-light);
+  color: #ffffff !important;
+  border-color: var(--color-primary);
+}
+
+.period-range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.period-select {
+  min-width: 140px;
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-6) var(--space-1) var(--space-2);
+}
+
+.period-separator {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }

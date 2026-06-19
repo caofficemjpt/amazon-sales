@@ -80,6 +80,20 @@ export function PeriodProvider({ children }: PeriodProviderProps) {
           row_count: null,
         };
         dispatch({ type: 'SET_PERIOD', payload: ytdPeriod });
+      } else if (savedId.startsWith('MULTI_')) {
+        const ids = savedId.replace('MULTI_', '').split(',');
+        const first = state.periods.find((p) => p.id === ids[0]);
+        const last = state.periods.find((p) => p.id === ids[ids.length - 1]);
+        if (first && last) {
+           const multiPeriod: Period = {
+             id: savedId,
+             month: `${first.month} - ${last.month}`,
+             year: first.year === last.year ? first.year : ('Multiple' as any),
+             uploaded_at: new Date().toISOString(),
+             row_count: null,
+           };
+           dispatch({ type: 'SET_PERIOD', payload: multiPeriod });
+        }
       } else {
         const found = state.periods.find((p) => p.id === savedId);
         if (found) {

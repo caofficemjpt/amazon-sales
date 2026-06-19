@@ -42,8 +42,10 @@ export function useRecords(periodId: string | null): UseRecordsResult {
     try {
       let periodIds: string[] = [id];
 
-      // Handle YTD virtual period
-      if (id.startsWith('YTD_')) {
+      // Handle MULTI and YTD virtual periods
+      if (id.startsWith('MULTI_')) {
+        periodIds = id.replace('MULTI_', '').split(',');
+      } else if (id.startsWith('YTD_')) {
         const year = parseInt(id.split('_')[1], 10);
         const { data: matchingPeriods, error: periodsError } = await supabase
           .from('periods')

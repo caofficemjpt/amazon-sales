@@ -92,6 +92,14 @@ export function DashboardPage() {
             {...(hasCompare ? getCompareDetails(kpis.totalRevenue, prevKpis.totalRevenue) : {})}
           />
           <KpiCard
+            title="Tax Exclusive"
+            value={formatINR(kpis.totalTaxable)}
+            rawValue={kpis.totalTaxable}
+            icon={<IndianRupee size={20} />}
+            color="default"
+            {...(hasCompare ? getCompareDetails(kpis.totalTaxable, prevKpis.totalTaxable) : {})}
+          />
+          <KpiCard
             title="Total Orders"
             value={kpis.totalOrders.toLocaleString('en-IN')}
             rawValue={kpis.totalOrders}
@@ -363,10 +371,12 @@ function computeKpis(records: ConsolidatedRecord[]) {
   const shipments = records.filter((r) => r.transaction_type === SHIPMENT);
   const refunds = records.filter((r) => r.transaction_type && REFUND_TYPES.includes(r.transaction_type));
 
-  const totalRevenue = shipments.reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
+  const totalRevenue = records.reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
+  const grossRevenue = shipments.reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
+  const totalTaxable = records.reduce((s, r) => s + (r.tax_exclusive_amount ?? 0), 0);
   const totalOrders = new Set(shipments.map((r) => r.order_id).filter(Boolean)).size;
   const unitsSold = shipments.reduce((s, r) => s + (r.quantity ?? 0), 0);
-  const avgOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0;
+  const avgOrderValue = totalOrders > 0 ? grossRevenue / totalOrders : 0;
   const netReceived = records.reduce((s, r) => s + (r.total ?? 0), 0);
   const totalCharges = records.reduce((s, r) => s + (r.charges ?? 0), 0);
   const totalRefunds = refunds.reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
@@ -375,16 +385,17 @@ function computeKpis(records: ConsolidatedRecord[]) {
   const refundOrderIds = new Set(refunds.map((r) => r.order_id).filter(Boolean));
   const refundRate = allOrderIds.size > 0 ? (refundOrderIds.size / allOrderIds.size) * 100 : 0;
 
-  return { totalRevenue, totalOrders, unitsSold, avgOrderValue, netReceived, totalCharges, totalRefunds, refundRate };
+  return { totalRevenue, totalTaxable, totalOrders, unitsSold, avgOrderValue, netReceived, totalCharges, totalRefunds, refundRate };
 }
 
 function computeExtraKpis(records: ConsolidatedRecord[]) {
   const shipments = records.filter((r) => r.transaction_type === SHIPMENT);
-  const totalRevenue = shipments.reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
+  const totalRevenue = records.reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
+  const grossRevenue = shipments.reduce((s, r) => s + (r.invoice_amount ?? 0), 0);
   const unitsSold = shipments.reduce((s, r) => s + (r.quantity ?? 0), 0);
   const totalCharges = records.reduce((s, r) => s + (r.charges ?? 0), 0);
 
-  const avgPricePerUnit = unitsSold > 0 ? totalRevenue / unitsSold : 0;
+  const avgPricePerUnit = unitsSold > 0 ? grossRevenue / unitsSold : 0;
   const grossMargin = totalRevenue > 0 ? ((totalRevenue - Math.abs(totalCharges)) / totalRevenue) * 100 : 0;
 
   // Settlement lag
